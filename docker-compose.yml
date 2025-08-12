@@ -1,0 +1,51 @@
+# For the love of all that is holy, do not just run this file in production 
+# without changing the passwords! That'd lead to a disaster!
+
+services:
+  db:
+    build: ./db
+    container_name: znuny-db
+    restart: unless-stopped
+    environment: &db-environment
+      MARIADB_DATABASE: znuny
+      MARIADB_USER: znuny
+      MARIADB_PASSWORD: znuny
+      MARIADB_ROOT_PASSWORD: rootpass # PASSWORD - NEEDS CHANGING IN PROD
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb", "-uznuny", "-pznuny", "-e", "SELECT 1", "znuny"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  znuny:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ZNUNY_VERSION: latest
+        ZNUNY_LTS_MAJOR: 6.5
+    container_name: znuny-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ZNUNY_DB_HOST: db
+      ZNUNY_DB_PORT: 3306
+      ZNUNY_DB_NAME: znuny
+      ZNUNY_DB_USER: znuny
+      ZNUNY_DB_PASSWORD: znuny # PASSWORD - NEEDS CHANGING IN PROD
+      ZNUNY_DEBUG: "0"
+    volumes:
+      - znuny_var:/opt/znuny/var
+      - znuny_config:/opt/znuny/Kernel/Config
+    ports:
+      - "8080:80"
+      - "8443:443"
+    restart: unless-stopped
+
+volumes:
+  db_data: {}
+  znuny_var: {}
+  znuny_config: {}
