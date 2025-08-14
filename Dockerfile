@@ -4,9 +4,8 @@
 
 FROM debian:12-slim
 
-ENV ZNUNY_HOME=/opt/znuny \
-  ZNUNY_USER=otrs \
-  ZNUNY_GROUP=otrs
+ENV ZNUNY_USER=otrs \
+    ZNUNY_GROUP=otrs
 
 # Build arguments:
 #   ZNUNY_VERSION   - explicit version (e.g., 6.5.15). Use "latest" to auto-detect newest for LTS major.
@@ -40,12 +39,12 @@ RUN set -eux; \
 # Create znuny user and group
 RUN set -eux; \
     groupadd --system ${ZNUNY_GROUP}; \
-    useradd --system --home ${ZNUNY_HOME} --gid ${ZNUNY_GROUP} -g www-data --shell /bin/bash -M -N ${ZNUNY_USER};
+    useradd --system --home /opt/znuny --gid ${ZNUNY_GROUP} -g www-data --shell /bin/bash -M -N ${ZNUNY_USER};
 
 # Download and extract Znuny (latest matching LTS major if ZNUNY_VERSION=latest)
 RUN set -eux; \
   # Ensure target does not pre-exist so mv will rename instead of nesting
-  rm -rf ${ZNUNY_HOME}; \
+  rm -rf /opt/znuny; \
   if [ "${ZNUNY_VERSION}" = "latest" ]; then \
     echo "Resolving latest Znuny ${ZNUNY_LTS_MAJOR}.x version"; \
     # Try GitHub API first (jq path)
@@ -89,14 +88,14 @@ RUN set -eux; \
   fi; \
   dir=$(tar -tzf /tmp/znuny.tar.gz | head -1 | cut -d/ -f1); \
   tar -xzf /tmp/znuny.tar.gz -C /opt; \
-  mv "/opt/${dir}" "${ZNUNY_HOME}"; \
+  mv "/opt/${dir}" "/opt/znuny"; \
   rm /tmp/znuny.tar.gz; \
-  ln -snf ${ZNUNY_HOME} /opt/otrs || true; \
-  ln -snf ${ZNUNY_HOME}/scripts/apache2-httpd.include.conf /etc/apache2/conf-available/znuny.conf || true; \ 
+  ln -snf /opt/znuny /opt/otrs || true; \
+  ln -snf /opt/znuny/scripts/apache2-httpd.include.conf /etc/apache2/conf-available/znuny.conf || true; \ 
   cp /opt/otrs/Kernel/Config.pm.dist /opt/otrs/Kernel/Config.pm; \
   /opt/otrs/bin/otrs.SetPermissions.pl || true; \ 
   su - otrs -c \
-"cd ${ZNUNY_HOME}/var/cron && for foo in *.dist; do cp \$foo \`basename \$foo .dist\`; done" || true;
+"cd /opt/znuny/var/cron && for foo in *.dist; do cp \$foo \`basename \$foo .dist\`; done" || true;
 
 # Apache modules (vhosts generated at runtime)
 RUN set -eux; \
@@ -121,7 +120,10 @@ RUN set -eux; \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-WORKDIR ${ZNUNY_HOME}
+# Create first run file
+RUN touch /opt/znuny/var/tmp/firsttime
+
+WORKDIR /opt/znuny
 
 # Expose HTTP/HTTPS ports
 EXPOSE 80 443

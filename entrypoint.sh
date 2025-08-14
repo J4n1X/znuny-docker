@@ -5,22 +5,45 @@ set -euo pipefail
 
 
 # Basic initialization for Znuny inside container
-ZNUNY_HOME=${ZNUNY_HOME:-/opt/znuny}
-CONFIG_DIR="${ZNUNY_HOME}/Kernel"
-SITE_CONFIG_DIR="${ZNUNY_HOME}/Kernel/Config"
-DB_HOST=${ZNUNY_DB_HOST:-db}
-DB_PORT=${ZNUNY_DB_PORT:-3306}
-DB_NAME=${ZNUNY_DB_NAME:-znuny}
-DB_USER=${ZNUNY_DB_USER:-znuny}
-DB_PASSWORD=${ZNUNY_DB_PASSWORD:-znuny}
+ZNUNY_HOME=/opt/znuny
+CONFIG_DIR="/opt/znuny/Kernel"
+SITE_CONFIG_DIR="/opt/znuny/Kernel/Config"
+DB_HOST="db"
+DB_PORT=3306
+DB_NAME=${MARIADB_DATABASE}
+DB_USER=${MARIADB_USER}
+DB_PASSWORD=${MARIADB_PASSWORD}
 
-## Layout now normalized at build time
+ZNUNY_CONFIG=/opt/znuny/Kernel/Config.pm
+
+function add_config_value() {
+  local key=${1}
+  local value=${2}
+  local mask=${3:-false}
+
+  if [ "${mask}" == true ]; then
+    print_value="**********"
+  else
+    print_value=${value}
+  fi
+
+  grep -qE \{\'\?${key}\'\?\} ${OTRS_CONFIG_FILE}
+  if [ $? -eq 0 ]
+  then
+    print_info "Updating configuration option \e[${OTRS_ASCII_COLOR_BLUE}m${key}\e[0m with value: \e[31m${print_value}\e[0m"
+    sed  -i -r "s/($Self->\{*$key*\} *= *).*/\1\"${value}\";/" ${OTRS_CONFIG_FILE}
+  else
+    print_info "Adding configuration option \e[${OTRS_ASCII_COLOR_BLUE}m${key}\e[0m with value: \e[31m${print_value}\e[0m"
+    sed -i "/$Self->{Home} = '\/opt\/otrs';/a \
+    \$Self->{'${key}'} = '${value}';" ${OTRS_CONFIG_FILE}
+  fi
+}
 
 # Wait for DB
 wait_for_db() {
   echo "[entrypoint] Waiting for database ${DB_HOST}:${DB_PORT}..." >&2
   for i in {1..60}; do
-    if timeout 2 bash -c "/usr/bin/mariadb -h ${DB_HOST} -P ${DB_PORT} -u${DB_USER} -p${DB_PASSWORD} ${DB_NAME} -e 'SELECT 1'" >/dev/null 2>&1; then
+    if timeout 2 bash -c "/usr/bin/mariadb -h ${DB_HOST} -P ${DB_PORT} -u${MARIADB_USER} -p${MARIADB_PASSWORD} ${MARIADB_DATABASE} -e 'SELECT 1'" >/dev/null 2>&1; then
       echo "[entrypoint] Database is reachable at ${DB_HOST}:${DB_PORT}." >&2
       return 0
     fi
@@ -32,18 +55,18 @@ wait_for_db() {
 
 init_db() {
   # Run database schema if core tables missing
-  if ! /usr/bin/mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u"${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "SELECT id FROM users LIMIT 1" >/dev/null 2>&1; then
+  if ! /usr/bin/mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u"${MARIADB_USER}" -p"${MARIADB_PASSWORD}" "${MARIADB_DATABASE}" -e "SELECT id FROM users LIMIT 1" >/dev/null 2>&1; then
     echo "[entrypoint] Loading initial schema..." >&2
-    mysql_cmd=(/usr/bin/mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u"${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}")
+    mysql_cmd=(/usr/bin/mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u"${MARIADB_USER}" -p"${MARIADB_PASSWORD}" "${MARIADB_DATABASE}")
     # Schema
-    if [ -f "${ZNUNY_HOME}/scripts/database/otrs-schema.mysql.sql" ]; then
-      "${mysql_cmd[@]}" < "${ZNUNY_HOME}/scripts/database/otrs-schema.mysql.sql"
+    if [ -f "/opt/znuny/scripts/database/otrs-schema.mysql.sql" ]; then
+      "${mysql_cmd[@]}" < "/opt/znuny/scripts/database/otrs-schema.mysql.sql"
     fi
-    if [ -f "${ZNUNY_HOME}/scripts/database/otrs-initial_insert.mysql.sql" ]; then
-      "${mysql_cmd[@]}" < "${ZNUNY_HOME}/scripts/database/otrs-initial_insert.mysql.sql"
+    if [ -f "/opt/znuny/scripts/database/otrs-initial_insert.mysql.sql" ]; then
+      "${mysql_cmd[@]}" < "/opt/znuny/scripts/database/otrs-initial_insert.mysql.sql"
     fi
-    if [ -f "${ZNUNY_HOME}/scripts/database/otrs-schema-post.mysql.sql" ]; then
-      "${mysql_cmd[@]}" < "${ZNUNY_HOME}/scripts/database/otrs-schema-post.mysql.sql"
+    if [ -f "/opt/znuny/scripts/database/otrs-schema-post.mysql.sql" ]; then
+      "${mysql_cmd[@]}" < "/opt/znuny/scripts/database/otrs-schema-post.mysql.sql"
     fi
     echo "[entrypoint] Database initialized." >&2
   else
@@ -52,10 +75,9 @@ init_db() {
 }
 
 generate_vhosts() {
-  local fqdn="${ZNUNY_FQDN:-localhost}"
-  local enable_ssl="${ZNUNY_ENABLE_SSL:-1}"
-  local force_ssl="${ZNUNY_FORCE_SSL:-1}"
-  echo "[entrypoint] Generating Apache vhost configuration (FQDN=${fqdn}, SSL=${enable_ssl}, FORCE_SSL=${force_ssl})" >&2
+  local fqdn="${WEBSERVER_FQDN}"
+  local enable_ssl="${WEBSERVER_ENABLE_SSL}"
+  echo "[entrypoint] Generating Apache vhost configuration (FQDN=${fqdn}, SSL=${enable_ssl})" >&2
 
   # Global ServerName to silence warning
   echo "ServerName ${fqdn}" > /etc/apache2/conf-available/servername.conf
@@ -124,36 +146,74 @@ $( if [ -f "$ZNUNY_SSL_CHAIN_FILE" ]; then echo "    SSLCertificateChainFile ${Z
 </IfModule>
 HTTPSCONF
     a2ensite znuny-https.conf >/dev/null
+  elif [ "$enable_ssl" = "1" ] && [ -f /etc/apache2/sites-enabled/znuny-https.conf ]; then
+    echo "[entrypoint] Disabling HTTPS site configuration"
+    a2dissite znuny-https.conf >/dev/null
   fi
 }
 
 setup_crontab() {
   echo "[entrypoint] Setting up Znuny cron jobs..." >&2
-  su - ${ZNUNY_USER} -c "${ZNUNY_HOME}/bin/Cron.sh start"
+  su - ${ZNUNY_USER} -c "/opt/znuny/bin/Cron.sh start"
+}
+
+print_debug_info() {
+  echo "[entrypoint][debug] Listing /opt/znuny top-level:" >&2
+  ls -al /opt/znuny || true
+  echo "[entrypoint][debug] Listing /opt/znuny/bin:" >&2
+  ls -al /opt/znuny/bin || true
+  echo "[entrypoint][debug] Listing /opt/znuny/bin/cgi-bin:" >&2
+  ls -al /opt/znuny/bin/cgi-bin || true
+  echo "[entrypoint][debug] apache2ctl -t output:" >&2
+  apache2ctl -t || true
+  echo "[entrypoint][debug] Dumping generated HTTP vhost config:" >&2
+  sed -n '1,160p' /etc/apache2/sites-available/znuny-http.conf || true
+  echo "[entrypoint][debug] Dumping generated HTTPS vhost config (if exists):" >&2
+  sed -n '1,200p' /etc/apache2/sites-available/znuny-https.conf || true
+  echo "[entrypoint][debug] Sleeping for inspection..." >&2
+  tail -f /dev/null
+}
+
+unset_envvars() {
+  echo "[entrypoint] Unsetting sensitive environment variables..." >&2
+  unset MARIADB_PASSWORD MARIADB_ROOT_PASSWORD ZNUNY_ROOT_PASSWORD
+  unset MARIADB_DATABASE MARIADB_USER
+  unset WEBSERVER_FQDN WEBSERVER_ENABLE_HTTPS WEBSERVER_SSL_KEY_FILE
+  unset WEBSERVER_SSL_CERT_FILE WEBSERVER_SSL_CHAIN_FILE
+  unset ZNUNY_DEBUG ZNUNY_LANGUAGE ZNUNY_TIMEZONE ZNUNY_NUMBER_GENERATOR
+  unset ZNUNY_TICKET_COUNTER ZNUNY_SENDMAIL_MODULE ZNUNY_SMTP_SERVER
+  unset ZNUNY_SMTP_USER ZNUNY_SMTP_PASSWORD
 }
 
 main() {
   wait_for_db
   #init_config
   init_db
+
+  add_config_value "DatabaseUser" ${MARIADB_USER}
+  add_config_value "DatabasePw" ${MARIADB_PASSWORD} true
+  add_config_value "DatabaseHost" ${DB_HOST}
+  add_config_value "DatabasePort" ${DP_PORT}
+  add_config_value "Database" ${MARIADB_DATABASE}
+
+  add_config_value "SendmailModule" "Kernel::System::Email::${ZNUNY_SENDMAIL_MODULE}"
+  add_config_value "SendmailModule::Host" "${ZNUNY_SMTP_SERVER}"
+  add_config_value "SendmailModule::Port" "${ZNUNY_SMTP_PORT}"
+  add_config_value "SendmailModule::AuthUser" "${ZNUNY_SMTP_USER}"
+  add_config_value "SendmailModule::AuthPassword" "${ZNUNY_SMTP_PASSWORD}" true
+  add_config_value "SecureMode" "1"
+
+  add_config_value "Ticket::NumberGenerator" "Kernel::System::Ticket::Number::${ZNUNY_NUMBER_GENERATOR}"
+  echo "${ZNUNY_TICKET_COUNTER}" > ${OTRS_ROOT}var/log/TicketCounter.log
+
   generate_vhosts
   setup_crontab
+
   if [ "${ZNUNY_DEBUG:-0}" = "1" ]; then
-    echo "[entrypoint][debug] Listing /opt/znuny top-level:" >&2
-    ls -al /opt/znuny || true
-    echo "[entrypoint][debug] Listing /opt/znuny/bin:" >&2
-    ls -al /opt/znuny/bin || true
-    echo "[entrypoint][debug] Listing /opt/znuny/bin/cgi-bin:" >&2
-    ls -al /opt/znuny/bin/cgi-bin || true
-    echo "[entrypoint][debug] apache2ctl -t output:" >&2
-    apache2ctl -t || true
-    echo "[entrypoint][debug] Dumping generated HTTP vhost config:" >&2
-    sed -n '1,160p' /etc/apache2/sites-available/znuny-http.conf || true
-    echo "[entrypoint][debug] Dumping generated HTTPS vhost config (if exists):" >&2
-    sed -n '1,200p' /etc/apache2/sites-available/znuny-https.conf || true
-    echo "[entrypoint][debug] Sleeping for inspection..." >&2
-    tail -f /dev/null
+    print_debug_info
+    unset_envvars
   else
+    unset_envvars
     exec "$@"
   fi
 }
