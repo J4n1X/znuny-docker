@@ -129,6 +129,7 @@ HTTPSCONF
 
 setup_crontab() {
   echo "[entrypoint] Setting up Znuny cron jobs..." >&2
+  su - ${ZNUNY_USER} -c "${ZNUNY_HOME}/bin/otrs.Daemon.pl start"
   su - ${ZNUNY_USER} -c "${ZNUNY_HOME}/bin/Cron.sh start"
 }
 

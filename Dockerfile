@@ -93,7 +93,8 @@ RUN set -eux; \
   rm /tmp/znuny.tar.gz; \
   ln -snf ${ZNUNY_HOME} /opt/otrs || true; \
   ln -snf ${ZNUNY_HOME}/scripts/apache2-httpd.include.conf /etc/apache2/conf-available/znuny.conf || true; \ 
-  cp /opt/otrs/Kernel/Config.pm.dist /opt/otrs/Kernel/Config.pm; \
+  cp /opt/otrs/Kernel/Config.pm.dist /opt/otrs/Kernel/Config/Config.pm; \
+  ln -s /opt/otrs/Kernel/Config/Config.pm /opt/otrs/Kernel/Config.pm ; \
   /opt/otrs/bin/otrs.SetPermissions.pl || true; \ 
   su - otrs -c \
 "cd ${ZNUNY_HOME}/var/cron && for foo in *.dist; do cp \$foo \`basename \$foo .dist\`; done" || true;
@@ -101,7 +102,7 @@ RUN set -eux; \
 # Apache modules (vhosts generated at runtime)
 RUN set -eux; \
   a2dismod mpm_event || true; \
-  a2enmod mpm_prefork headers filter perl lbmethod_byrequests || true; \
+  a2enmod mpm_prefork headers filter perl lbmethod_byrequests ssl || true; \
   a2dissite 000-default.conf || true; \
   a2enconf znuny || true
 
