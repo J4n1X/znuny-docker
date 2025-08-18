@@ -27,7 +27,7 @@ RUN set -eux; \
       libencode-hanextra-perl libmail-imapclient-perl libtemplate-perl libdatetime-perl \
       libmoo-perl bash-completion libyaml-libyaml-perl libjavascript-minifier-xs-perl \
       libcss-minifier-xs-perl libauthen-sasl-perl libauthen-ntlm-perl libhash-merge-perl \
-      libical-parser-perl libspreadsheet-xlsx-perl libdata-uuid-perl \
+      libical-parser-perl libspreadsheet-xlsx-perl libdata-uuid-perl fetchmail iputils-ping \
       mariadb-client \
       cron \
       curl ca-certificates \
