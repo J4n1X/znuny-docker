@@ -131,13 +131,7 @@ EXPOSE 80 443
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 CMD curl -fsS http://localhost/otrs/index.pl || exit 1
 
 # Environment (DB vars consumed by entrypoint and initial configuration script)
-ENV ZNUNY_DB_HOST=db \
-  ZNUNY_DB_PORT=3306 \
-  ZNUNY_DB_NAME=znuny \
-  ZNUNY_DB_USER=znuny \
-  ZNUNY_DB_PASSWORD=znuny \
-  ZNUNY_FQDN=localhost \
-  ZNUNY_SSL_CERT_FILE=/etc/ssl/znuny/selfsigned.crt \
+ENV ZNUNY_SSL_CERT_FILE=/etc/ssl/znuny/selfsigned.crt \
   ZNUNY_SSL_KEY_FILE=/etc/ssl/znuny/selfsigned.key \
   ZNUNY_SSL_CHAIN_FILE=/etc/ssl/znuny/chain.pem \
   ZNUNY_ENABLE_SSL=1 \

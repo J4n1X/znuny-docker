@@ -6,7 +6,7 @@ services:
     build: ./db
     container_name: znuny-db
     restart: unless-stopped
-    environment: &db-environment
+    environment:
       MARIADB_DATABASE: znuny
       MARIADB_USER: znuny
       MARIADB_PASSWORD: znuny
@@ -14,8 +14,8 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mariadb", "-uznuny", "-pznuny", "-e", "SELECT 1", "znuny"]
-      interval: 20s
+      test: ["CMD-SHELL", "mariadb -u\"$$MARIADB_USER\" -p\"$$MARIADB_PASSWORD\" -e 'SELECT 1' \"$$MARIADB_DATABASE\""]
+      interval: 5s
       timeout: 5s
       retries: 5
 
@@ -35,7 +35,7 @@ services:
       ZNUNY_DB_PORT: 3306
       ZNUNY_DB_NAME: znuny
       ZNUNY_DB_USER: znuny
-      ZNUNY_DB_PASSWORD: znuny # PASSWORD - NEEDS CHANGING IN PROD
+      ZNUNY_DB_PASSWORD: znuny
       ZNUNY_DEBUG: "0"
     volumes:
       - znuny_var:/opt/znuny/var
